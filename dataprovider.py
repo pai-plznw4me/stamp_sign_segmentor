@@ -167,4 +167,8 @@ class StampSignSegmentDataprovider(Sequence):
             stamp_coords[:, [0, 2]] += offset_xs
             stamp_coords[:, [1, 3]] += offset_ys
 
-        return np.array(batch_docs), np.array(batch_ys)
+            batch_xs.append(crop_images(docu, stamp_coords))
+            batch_ys.append(crop_images(mask, stamp_coords))
+
+
+        return batch_xs, batch_ys
