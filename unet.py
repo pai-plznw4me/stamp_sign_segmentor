@@ -1,6 +1,4 @@
-import tensorflow as tf
 from tensorflow.keras.layers import Input, Conv2D, MaxPool2D, Conv2DTranspose, Concatenate
-from tensorflow.keras.models import Model
 
 
 def simple_unet(shape):

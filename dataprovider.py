@@ -56,7 +56,7 @@ class StampSignSegmentDataprovider(Sequence):
         self.stamp_indx = np.arange(len(self.stamp_imgs))
 
     @staticmethod
-    def random_attach_stamp(doc, stamp, coord_range, inplace):
+    def random_attach_stamp(doc, mask, stamp, coord_range, inplace):
         """
         문서와 문서와 같은 크기인 zero matrix의 지정된 위치에 도장을 찍고 찍힌 문서와 zero matrix을 반환합니다.
 
@@ -81,8 +81,9 @@ class StampSignSegmentDataprovider(Sequence):
         rand_x = np.random.randint(x1, gap_w)
         rand_y = np.random.randint(y1, gap_h)
 
-        # 빈 화면에 도장을 찍습니다.
-        masked_doc = StampSignSegmentDataprovider.attatch_stamp(doc, stamp, coord=(rand_x, rand_y))
+        # 빈 화면에 도장을 찍습니다. 해당 데이터는 segmentation 정답 데이터로 사용합니다.
+        masked_doc = StampSignSegmentDataprovider.attatch_stamp(mask, stamp, coord=(rand_x, rand_y))
+
         # 이미지에 도장을 찍습니다.
         doc = StampSignSegmentDataprovider.attatch_stamp(doc, stamp, coord=(rand_x, rand_y))
 
@@ -156,19 +157,21 @@ class StampSignSegmentDataprovider(Sequence):
 
             # 선택된 도장을 문서와 zero-matirx 찍습니다.
             stamp_coords = []
+            mask = np.zeros_like(docu)
             for trgt_stamp in trgt_stamps:
                 # 지정된 범위 내 random 한 위치에 도장이 찍히도록 합니다.
-                docu, mask, coord = StampSignSegmentDataprovider.random_attach_stamp(docu, trgt_stamp, stamp_loc)
+                docu, mask, coord = StampSignSegmentDataprovider.random_attach_stamp(docu, mask, trgt_stamp, stamp_loc)
                 stamp_coords.append(coord)
 
             # random offset 생성
             stamp_coords = np.array(stamp_coords)
             offset_xs, offset_ys = random_offset(stamp_coords, (0.25, 0.25))
+
+            # random offset 적용
             stamp_coords[:, [0, 2]] += offset_xs
             stamp_coords[:, [1, 3]] += offset_ys
 
             batch_xs.append(crop_images(docu, stamp_coords))
             batch_ys.append(crop_images(mask, stamp_coords))
-
 
         return batch_xs, batch_ys
