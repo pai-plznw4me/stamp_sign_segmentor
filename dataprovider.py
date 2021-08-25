@@ -144,39 +144,27 @@ class StampSignSegmentDataprovider(Sequence):
             n_stamp = np.random.randint(np.min(self.n_stamp_range), np.max(self.n_stamp_range) + 1)
             self.n_stamps.append(n_stamp)
 
-            # doc 내 도장을 하나 이상 찍습니다.
-            if n_stamp != 0:
+            # doc 내 도장을 하나 이상 찍는걸 보증합니다.
+            assert n_stamp > 0
 
-                # 하나의 문서에 몇 개의 도장을 찍을지 결정합니다.
-                trgt_cls = np.random.choice(self.stamp_indx, size=n_stamp)
-                trgt_stamps = self.stamp_imgs[trgt_cls]
+            # 도장 pool에서 random 으로 지정된 개 수(n_stamp) 만큼 도장을 추출합니다.
+            trgt_cls = np.random.choice(self.stamp_indx, size=n_stamp)
+            trgt_stamps = self.stamp_imgs[trgt_cls]
 
-                # 문서 전체에서 stamp 가 찍히도록 설정 합니다.
-                stamp_loc = [0, 0, docu.shape[1], docu.shape[0]]
+            # 문서 전체에서 stamp 가 찍히도록 설정 합니다.
+            stamp_loc = [0, 0, docu.shape[1], docu.shape[0]]
 
-                # 문서에 도장을 찍습니다.
-                trgt_loc = []
-                for trgt_stamp in trgt_stamps:
-                    # 위 지정된 범위 내에 random 한 위치에 도장이 찍히도록 합니다.
-                    _, mask, coord = self.attach_stamp(docu, trgt_stamp, stamp_loc, inplace=True)
-                    trgt_loc.append(coord)
-                trgt_loc = np.array(trgt_loc)
-                trgt_loc = xyxy2xywh(trgt_loc)
+            # 선택된 도장을 문서와 zero-matirx 찍습니다.
+            stamp_coords = []
+            for trgt_stamp in trgt_stamps:
+                # 지정된 범위 내 random 한 위치에 도장이 찍히도록 합니다.
+                docu, mask, coord = StampSignSegmentDataprovider.random_attach_stamp(docu, trgt_stamp, stamp_loc)
+                stamp_coords.append(coord)
 
-                # 각 anchor 에 가장 적절한 goundtruth 와 stamp obj 간 delta 을 계산 및 cls 을 부여합니다.
-                batch_xs, batch_ys = generate_segmentation_dataset(docu, trgt_loc, trgt_cls)
-
-            # doc 내 도장을 하나도 찍지 않습니다.
-            else:
-                bg_delta = np.zeros_like(self.concat_default_boxes)
-                bg_cls = np.ones(shape=(len(self.concat_default_boxes), 1)) * (self.n_classes - 1)
-                delta_cls = np.concatenate([bg_delta, bg_cls], axis=-1)
-
-        # change class to  onehot vector
-        if self.onehot:
-            batch_ys = np.array(batch_ys)
-            batch_delta = batch_ys[:, :, :4]
-            ys_onehot = to_categorical(batch_ys[:, :, 4], num_classes=self.n_classes)
-            batch_ys = np.concatenate([batch_delta, ys_onehot], axis=-1)
+            # random offset 생성
+            stamp_coords = np.array(stamp_coords)
+            offset_xs, offset_ys = random_offset(stamp_coords, (0.25, 0.25))
+            stamp_coords[:, [0, 2]] += offset_xs
+            stamp_coords[:, [1, 3]] += offset_ys
 
         return np.array(batch_docs), np.array(batch_ys)
