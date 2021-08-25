@@ -29,7 +29,7 @@ def crop_image(image, crop_coordinate):
     :param crop_coordinate: ndarray or list, shape=(4=(x y x y))
     :return:
     """
-    return image[crop_coordinate[0]: crop_coordinate[2], crop_coordinate[1]: crop_coordinate[3]]
+    return image[crop_coordinate[1]: crop_coordinate[3], crop_coordinate[0]: crop_coordinate[2]]
 
 
 def copy_obj(obj, size):
