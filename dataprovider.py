@@ -1,9 +1,16 @@
+import os
+from copy import copy
+from glob import glob
+
 from tensorflow.keras.utils import Sequence
+from tensorflow.python.keras.utils.np_utils import to_categorical
+
+from utils import random_offset, crop_images, search_img_paths, paths2imgs, xyxy2xywh, copy_obj
+import numpy as np
 
 
 class StampSignSegmentDataprovider(Sequence):
-    def __init__(self, stamp_folder, docs_folder, batch_size, input_shape, onehot=True,
-                 n_stamp_range=(0, 5)):
+    def __init__(self, stamp_folder, docs_folder, batch_size, input_shape, onehot=True, max_n_stamp=5):
         """
         Description:
          stamp, documentation 경로를 불러와 백터화합니다.(ndarray),
@@ -27,7 +34,7 @@ class StampSignSegmentDataprovider(Sequence):
         self.batch_size = batch_size
         self.input_shape = input_shape
         self.onehot = onehot
-        self.n_stamp_range = n_stamp_range
+        self.n_stamp_range = (1, max_n_stamp)
 
         # 지정된 경로에 있는 파일중 stamp 이미지 파일만 찾습니다.
         stamp_img_paths = glob(os.path.join(self.stamp_folder, '*'))
@@ -49,11 +56,9 @@ class StampSignSegmentDataprovider(Sequence):
         self.stamp_indx = np.arange(len(self.stamp_imgs))
 
     @staticmethod
-    def attach_stamp(doc, stamp, coord_range, inplace):
+    def random_attach_stamp(doc, stamp, coord_range, inplace):
         """
-        도장을 지정된 위치에 찍습니다.
-        단순히 더하는 방식의 연산을 쓰기 때문에 stamp 는 vector(=배경값이 0인) 형태로 제공 되어야 합니다.
-        함수는 immutable 하며 반환되는 doc 은 입력 변수인 doc 과 독립적입니다.
+        문서와 문서와 같은 크기인 zero matrix의 지정된 위치에 도장을 찍고 찍힌 문서와 zero matrix을 반환합니다.
 
         :param doc: ndarray, 3d or 2d
         :param stamp: ndarray, 3d or 2d
@@ -76,27 +81,35 @@ class StampSignSegmentDataprovider(Sequence):
         rand_x = np.random.randint(x1, gap_w)
         rand_y = np.random.randint(y1, gap_h)
 
-        # stamp 중 pixel 값이 0인 것들은 docs pixel 에서 가져옴
-        patch_stamp = np.where(stamp != 0, stamp, doc[rand_y: rand_y + stamp_h, rand_x: rand_x + stamp_w])
-        doc[rand_y: rand_y + stamp_h, rand_x: rand_x + stamp_w] = patch_stamp
+        # 빈 화면에 도장을 찍습니다.
+        masked_doc = StampSignSegmentDataprovider.attatch_stamp(doc, stamp, coord=(rand_x, rand_y))
+        # 이미지에 도장을 찍습니다.
+        doc = StampSignSegmentDataprovider.attatch_stamp(doc, stamp, coord=(rand_x, rand_y))
 
         # show_image(patch_stamp)
-        return doc, (rand_x, rand_y, rand_x + stamp_w, rand_y + stamp_h)
+        return doc, masked_doc, (rand_x, rand_y, rand_x + stamp_w, rand_y + stamp_h)
+
+    @staticmethod
+    def attatch_stamp(doc, stamp, coord):
+        """
+        doc 에 지정된 위치에 stamp 을 찍고 doc 을 반환합니다(inplace 방법)
+
+        :param doc: 도장이 찍힐 문서, np.array, shape=(h, w, ch)
+        :param stamp: np.array, shape=(h, w, ch)
+        :param coord: 도장이 찍힐 좌측 상단의 위치
+        :return: doc: 도장이 찍힌 문서, np.array, shape=(h, w, ch)
+        """
+        x1, y1 = coord
+        stamp_w = stamp.shape[1]
+        stamp_h = stamp.shape[0]
+
+        patch_stamp = np.where(stamp != 0, stamp, doc[y1: y1 + stamp_h, x1: x1 + stamp_w])
+        doc[y1: y1 + stamp_h, x1: x1 + stamp_w] = patch_stamp
+        return doc
 
     def __len__(self):
         # 1 epochs 당 step 수를 결정합니다.
         return len(self.docus_imgs)
-
-    @staticmethod
-    def generate_segmentation_dataset(document, object_coords, object_classes):
-        """
-
-        :param document: ndarray, shape=(H, W, CH)
-        :param object_coords: ndarray, shape=(N_object, 4=(x,y,x,y))
-        :param object_classes: ndarray, shape=(N_object)
-        :return:
-        """
-        raise NotImplementedError
 
     def __getitem__(self, index):
         """
@@ -145,7 +158,7 @@ class StampSignSegmentDataprovider(Sequence):
                 trgt_loc = []
                 for trgt_stamp in trgt_stamps:
                     # 위 지정된 범위 내에 random 한 위치에 도장이 찍히도록 합니다.
-                    _, coord = self.attach_stamp(docu, trgt_stamp, stamp_loc, inplace=True)
+                    _, mask, coord = self.attach_stamp(docu, trgt_stamp, stamp_loc, inplace=True)
                     trgt_loc.append(coord)
                 trgt_loc = np.array(trgt_loc)
                 trgt_loc = xyxy2xywh(trgt_loc)
