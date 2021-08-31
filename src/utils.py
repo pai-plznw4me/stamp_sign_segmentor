@@ -32,6 +32,7 @@ def crop_image(image, crop_coordinate):
     return image[crop_coordinate[1]: crop_coordinate[3], crop_coordinate[0]: crop_coordinate[2]]
 
 
+
 def copy_obj(obj, size):
     """
     object을 지정된 개 수 만큼 복사합니다.
@@ -46,7 +47,7 @@ def copy_obj(obj, size):
     return ret
 
 
-def random_offset(object_coords, offset_xy_ratio):
+def random_offset(object_coords, offset_xy_ratio, max_size):
     """
     Description:
     주어진 좌표별로 지정된 번위 내 offset을 random 으로 생성합니다.
@@ -67,9 +68,18 @@ def random_offset(object_coords, offset_xy_ratio):
 
     offset_xs = []
     offset_ys = []
-    for ind, diff_x in enumerate(range(len(diff_xs))):
+
+    while len(offset_xs) == len(object_coords):
+        ind = len(offset_xs)
         offset_x = np.random.randint(-diff_xs[ind], diff_xs[ind])
         offset_y = np.random.randint(-diff_ys[ind], diff_ys[ind])
+
+        object_coords[ind, [0, 2]] += offset_xs
+        object_coords[ind, [1, 3]] += offset_ys
+
+        if np.all(object_coords[ind, [0, 1]] < 0) & np.all(object_coords[ind, [2, 3]] > max_size):
+            continue
+
         offset_ys.append(offset_y)
         offset_xs.append(offset_x)
 

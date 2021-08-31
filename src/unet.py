@@ -1,4 +1,5 @@
 from tensorflow.keras.layers import Input, Conv2D, MaxPool2D, Conv2DTranspose, Concatenate
+from tensorflow.keras.models import Model
 
 
 def simple_unet(shape):
@@ -63,4 +64,5 @@ def simple_unet(shape):
 
 
 if __name__ == '__main__':
-    inputs, pred = simple_unet((224, 224, 3))
+    inputs, pred = simple_unet((50, 50, 3))
+    model = Model(inputs, pred)

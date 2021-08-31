@@ -3,8 +3,10 @@ from copy import copy
 from glob import glob
 from tensorflow.keras.utils import Sequence
 from utils import random_offset, crop_images, search_img_paths, paths2imgs, copy_obj, plot_images
-from utils import show_image, draw_rectangles
 import numpy as np
+import cv2
+
+from src.utils import show_image
 
 
 class StampSignSegmentDataprovider(Sequence):
@@ -31,6 +33,7 @@ class StampSignSegmentDataprovider(Sequence):
         self.docs_folder = docs_folder
         self.batch_size = batch_size
         self.n_stamp_range = (1, max_n_stamp)
+        self.stamp_size = (112, 112)
 
         # 지정된 경로에 있는 파일중 stamp 이미지 파일만 찾습니다.
         stamp_img_paths = glob(os.path.join(self.stamp_folder, '*'))
@@ -163,10 +166,12 @@ class StampSignSegmentDataprovider(Sequence):
             # generate boolean mask
             mask = mask.sum(axis=-1)
             mask = np.where(mask == 0, 0, 1)
+            mask = mask.astype(dtype='float')
 
             # random offset 생성
             stamp_coords = np.array(stamp_coords)
-            offset_xs, offset_ys = random_offset(stamp_coords, (0.25, 0.25))
+
+            offset_xs, offset_ys = random_offset(stamp_coords, (0.25, 0.25), docu.shape[:2])
 
             # shape (N_stamp)  => (N_stamp, 1)
             offset_xs = np.expand_dims(offset_xs, axis=-1)
@@ -178,8 +183,14 @@ class StampSignSegmentDataprovider(Sequence):
             stamp_coords[:, [1, 3]] += offset_ys
 
             stamp_coords = np.array(stamp_coords)
-            batch_xs.append(crop_images(docu, stamp_coords))
-            batch_ys.append(crop_images(mask, stamp_coords))
+            cropped_images = crop_images(docu, stamp_coords)
+            cropped_masks = crop_images(mask, stamp_coords)
+
+            for image, mask in zip(cropped_images, cropped_masks):
+                image = cv2.resize(image, dsize=self.stamp_size)
+                mask = cv2.resize(mask, dsize=(112, 112))
+                batch_xs.append(image)
+                batch_ys.append(mask)
 
         return batch_xs, batch_ys
 
@@ -188,6 +199,6 @@ if __name__ == '__main__':
     docs_folder = '../dataset/docs_preproc'
     stamp_folder = '../dataset/stamp_vector'
 
-    sss_dp = StampSignSegmentDataprovider(stamp_folder, docs_folder, 32)
+    sss_dp = StampSignSegmentDataprovider(stamp_folder, docs_folder, 2)
     batch_xs, batch_ys = sss_dp[0]
     plot_images(batch_ys[0])
