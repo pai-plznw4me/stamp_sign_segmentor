@@ -7,6 +7,32 @@ import random
 import cv2
 
 
+def random_coordinate(image, crop_size):
+    """
+    Description:
+    image 내 patch을 추출 할 수 있는 왼쪽 상단의 좌표를 반환합니다.
+
+    :param image: ndarray
+    :param crop_image: crop_image
+    :return: tuple, crop 이미지의 좌측 상단 좌표
+    """
+
+    # stamp 의 크기
+    img_w = image.shape[1]
+    img_h = image.shape[0]
+
+    obj_w = crop_size[1]
+    obj_h = crop_size[0]
+
+    # stamp 가 찍힐 documentation 상 random 한 위치 추출
+    gap_w = img_w - obj_w
+    gap_h = img_h - obj_h
+    rand_x = np.random.randint(0, gap_w)
+    rand_y = np.random.randint(0, gap_h)
+
+    return rand_x, rand_y
+
+
 def crop_images(image, crop_coordinates):
     """
     이미지 내 여러 위치를 crop 해 반환합니다.
@@ -30,7 +56,6 @@ def crop_image(image, crop_coordinate):
     :return:
     """
     return image[crop_coordinate[1]: crop_coordinate[3], crop_coordinate[0]: crop_coordinate[2]]
-
 
 
 def copy_obj(obj, size):
@@ -59,6 +84,7 @@ def random_offset(object_coords, offset_xy_ratio, max_size):
     :return:
     """
 
+    max_h, max_w = max_size
     object_coords = object_coords.copy()
     offset_x_ratio, offset_y_ratio = offset_xy_ratio
     diff_xs = object_coords[:, 2] - object_coords[:, 0]
@@ -69,15 +95,18 @@ def random_offset(object_coords, offset_xy_ratio, max_size):
     offset_xs = []
     offset_ys = []
 
-    while len(offset_xs) == len(object_coords):
+    while len(offset_xs) != len(object_coords):
         ind = len(offset_xs)
         offset_x = np.random.randint(-diff_xs[ind], diff_xs[ind])
         offset_y = np.random.randint(-diff_ys[ind], diff_ys[ind])
 
-        object_coords[ind, [0, 2]] += offset_xs
-        object_coords[ind, [1, 3]] += offset_ys
+        object_coords[ind, [0, 2]] += offset_x
+        object_coords[ind, [1, 3]] += offset_y
 
-        if np.all(object_coords[ind, [0, 1]] < 0) & np.all(object_coords[ind, [2, 3]] > max_size):
+        a = np.any(object_coords[ind, [0, 1]] < 0)
+        b = np.any(object_coords[ind, [2, 3]] > (max_w, max_h))
+
+        if np.any(object_coords[ind, [0, 1]] < 0) | np.any(object_coords[ind, [2, 3]] > (max_w, max_h)):
             continue
 
         offset_ys.append(offset_y)
@@ -389,6 +418,13 @@ def plot_images(imgs, names=None, random_order=False, savepath=None):
         plt.savefig(savepath)
     plt.tight_layout()
     plt.show()
+
+
+def show_each_class(img, n_classes):
+    mask_imgs = []
+    for class_ind in range(n_classes):
+        mask_imgs.append((img == class_ind).astype('float'))
+    return mask_imgs
 
 
 if __name__ == '__main__':

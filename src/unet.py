@@ -1,6 +1,8 @@
 from tensorflow.keras.layers import Input, Conv2D, MaxPool2D, Conv2DTranspose, Concatenate
 from tensorflow.keras.models import Model
 
+from dataprovider import StampSignSegmentDataprovider
+
 
 def simple_unet(shape):
     inputs = Input(shape)
@@ -58,11 +60,18 @@ def simple_unet(shape):
 
     up_layer = Conv2D(16, 3, 1, padding='same', activation=up_activation)(concat_layer)
     up_layer = Conv2DTranspose(16, 3, 2, padding='same', activation=up_activation)(up_layer)
-    pred = Conv2D(11, 3, 1, padding='same', activation='softmax')(up_layer)
+    pred = Conv2D(2, 3, 1, padding='same', activation='softmax')(up_layer)
 
     return inputs, pred
 
 
 if __name__ == '__main__':
-    inputs, pred = simple_unet((50, 50, 3))
+    docs_folder = '../dataset/docs_preproc'
+    stamp_folder = '../dataset/stamp_vector'
+    sss_dp = StampSignSegmentDataprovider(stamp_folder, docs_folder, 2)
+    xs, ys = sss_dp[0]
+
+    inputs, pred = simple_unet((112, 112, 3))
     model = Model(inputs, pred)
+    model.compile('adam', 'mse', 'acc')
+    model.fit(sss_dp)

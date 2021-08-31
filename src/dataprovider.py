@@ -1,16 +1,13 @@
 import os
 from copy import copy
 from glob import glob
-from tensorflow.keras.utils import Sequence
-from utils import random_offset, crop_images, search_img_paths, paths2imgs, copy_obj, plot_images
+from tensorflow.keras.utils import Sequence, to_categorical
+from utils import search_img_paths, paths2imgs, copy_obj, plot_images, random_coordinate, crop_image, show_each_class
 import numpy as np
-import cv2
-
-from src.utils import show_image
 
 
 class StampSignSegmentDataprovider(Sequence):
-    def __init__(self, stamp_folder, docs_folder, batch_size, max_n_stamp=5):
+    def __init__(self, stamp_folder, docs_folder, batch_size, max_n_stamp=30):
         """
         Description:
          stamp, documentation 경로를 불러와 백터화합니다.(ndarray),
@@ -32,7 +29,7 @@ class StampSignSegmentDataprovider(Sequence):
         self.stamp_folder = stamp_folder
         self.docs_folder = docs_folder
         self.batch_size = batch_size
-        self.n_stamp_range = (1, max_n_stamp)
+        self.n_stamp_range = (20, max_n_stamp)
         self.stamp_size = (112, 112)
 
         # 지정된 경로에 있는 파일중 stamp 이미지 파일만 찾습니다.
@@ -55,7 +52,7 @@ class StampSignSegmentDataprovider(Sequence):
         self.stamp_indx = np.arange(len(self.stamp_imgs))
 
     @staticmethod
-    def random_attach_stamp(doc, mask, stamp, coord_range, inplace):
+    def random_attach_stamp(doc, mask, stamp, cls, coord_range, inplace):
         """
         문서와 문서와 같은 크기인 zero matrix의 지정된 위치에 도장을 찍고 찍힌 문서와 zero matrix을 반환합니다.
 
@@ -80,8 +77,14 @@ class StampSignSegmentDataprovider(Sequence):
         rand_x = np.random.randint(x1, gap_w)
         rand_y = np.random.randint(y1, gap_h)
 
+        # class 값으로 지정된 mask을 생성합니다.
+        stamp_mask = stamp.sum(axis=-1)
+        stamp_mask = np.where(stamp_mask == 0, 0, 1)
+        stamp_mask = stamp_mask.astype(dtype='float')
+        stamp_mask = stamp_mask * cls
+
         # 빈 화면에 도장을 찍습니다. 해당 데이터는 segmentation 정답 데이터로 사용합니다.
-        masked_doc = StampSignSegmentDataprovider.attatch_stamp(mask, stamp, coord=(rand_x, rand_y))
+        masked_doc = StampSignSegmentDataprovider.attatch_stamp(mask, stamp_mask, coord=(rand_x, rand_y))
 
         # 이미지에 도장을 찍습니다.
         doc = StampSignSegmentDataprovider.attatch_stamp(doc, stamp, coord=(rand_x, rand_y))
@@ -154,45 +157,27 @@ class StampSignSegmentDataprovider(Sequence):
             # 문서 전체에서 stamp 가 찍히도록 설정 합니다.
             stamp_loc = [0, 0, docu.shape[1], docu.shape[0]]
 
-            # 선택된 도장을 문서와 zero-matirx 찍습니다.
-            stamp_coords = []
-            mask = np.zeros_like(docu)
-            for trgt_stamp in trgt_stamps:
+            # (⚠️background 가 0 이기 때문에 1을 더해줍니다.)
+            trgt_cls = trgt_cls + 1
+            mask = np.zeros(docu.shape[:2])
+            for trgt_stamp, trgt_class in zip(trgt_stamps, trgt_cls):
                 # 지정된 범위 내 random 한 위치에 도장이 찍히도록 합니다.
-                docu, mask, coord = StampSignSegmentDataprovider.random_attach_stamp(docu, mask, trgt_stamp, stamp_loc,
+                docu, mask, coord = StampSignSegmentDataprovider.random_attach_stamp(docu, mask, trgt_stamp, trgt_class,
+                                                                                     stamp_loc,
                                                                                      inplace=False)
-                stamp_coords.append(coord)
+            # 특정 이미지 크기로 document 을 crop 합니다.
+            crop_docu_h, crop_docu_w = 112, 112
+            rand_x, rand_y = random_coordinate(docu, (crop_docu_h, crop_docu_w))
+            crop_docu = crop_image(docu, (rand_x, rand_y, rand_x + crop_docu_h, rand_y + crop_docu_w))
+            crop_mask = crop_image(mask, (rand_x, rand_y, rand_x + crop_docu_h, rand_y + crop_docu_w))
 
-            # generate boolean mask
-            mask = mask.sum(axis=-1)
-            mask = np.where(mask == 0, 0, 1)
-            mask = mask.astype(dtype='float')
+            # onehot vector 로 변경합니다.
+            crop_mask = to_categorical(crop_mask, len(self.stamp_indx) + 1)
 
-            # random offset 생성
-            stamp_coords = np.array(stamp_coords)
+            batch_xs.append(crop_docu)
+            batch_ys.append(crop_mask)
 
-            offset_xs, offset_ys = random_offset(stamp_coords, (0.25, 0.25), docu.shape[:2])
-
-            # shape (N_stamp)  => (N_stamp, 1)
-            offset_xs = np.expand_dims(offset_xs, axis=-1)
-            offset_ys = np.expand_dims(offset_ys, axis=-1)
-
-            # random offset 적용
-            # shape : (N_stamp, 2) += (N_stamp, 1) => (N_stamp, 2)
-            stamp_coords[:, [0, 2]] += offset_xs
-            stamp_coords[:, [1, 3]] += offset_ys
-
-            stamp_coords = np.array(stamp_coords)
-            cropped_images = crop_images(docu, stamp_coords)
-            cropped_masks = crop_images(mask, stamp_coords)
-
-            for image, mask in zip(cropped_images, cropped_masks):
-                image = cv2.resize(image, dsize=self.stamp_size)
-                mask = cv2.resize(mask, dsize=(112, 112))
-                batch_xs.append(image)
-                batch_ys.append(mask)
-
-        return batch_xs, batch_ys
+        return np.array(batch_xs), np.array(batch_ys)
 
 
 if __name__ == '__main__':
@@ -201,4 +186,7 @@ if __name__ == '__main__':
 
     sss_dp = StampSignSegmentDataprovider(stamp_folder, docs_folder, 2)
     batch_xs, batch_ys = sss_dp[0]
-    plot_images(batch_ys[0])
+    batch_ys = np.argmax(batch_ys, axis=-1)
+    sample_ys = batch_ys[0]
+    images = show_each_class(sample_ys, sss_dp.n_classes)
+    plot_images(images)
