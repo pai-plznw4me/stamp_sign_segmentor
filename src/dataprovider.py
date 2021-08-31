@@ -2,8 +2,7 @@ import os
 from copy import copy
 from glob import glob
 from tensorflow.keras.utils import Sequence, to_categorical
-from utils import search_img_paths, paths2imgs, copy_obj, plot_images, random_coordinate, crop_image, show_each_class, \
-    random_offset, crop_images
+from utils import search_img_paths, paths2imgs, copy_obj, plot_images, show_each_class, random_offset, crop_images
 import numpy as np
 
 
@@ -213,7 +212,6 @@ class StampSignSegmentDataprovider(Sequence):
 if __name__ == '__main__':
     docs_folder = '../dataset/docs_preproc'
     stamp_folder = '../dataset/stamp_vector'
-
     sss_dp = StampSignSegmentDataprovider(stamp_folder, docs_folder, (112, 112), 2)
     batch_xs, batch_ys = sss_dp[0]
     batch_ys = np.argmax(batch_ys, axis=-1)
