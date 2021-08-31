@@ -4,9 +4,10 @@ from tensorflow.keras.models import Model
 from dataprovider import StampSignSegmentDataprovider
 
 
-def simple_unet(shape):
+def simple_unet(shape, n_classes):
+
     inputs = Input(shape)
-    n_classes = 11
+    n_classes = n_classes
 
     #  models
     # layer 1, Image shape (128, 128) -> (64, 64)
@@ -60,7 +61,7 @@ def simple_unet(shape):
 
     up_layer = Conv2D(16, 3, 1, padding='same', activation=up_activation)(concat_layer)
     up_layer = Conv2DTranspose(16, 3, 2, padding='same', activation=up_activation)(up_layer)
-    pred = Conv2D(2, 3, 1, padding='same', activation='softmax')(up_layer)
+    pred = Conv2D(n_classes, 3, 1, padding='same', activation='softmax')(up_layer)
 
     return inputs, pred
 
