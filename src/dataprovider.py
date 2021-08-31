@@ -2,12 +2,13 @@ import os
 from copy import copy
 from glob import glob
 from tensorflow.keras.utils import Sequence, to_categorical
-from utils import search_img_paths, paths2imgs, copy_obj, plot_images, random_coordinate, crop_image, show_each_class
+from utils import search_img_paths, paths2imgs, copy_obj, plot_images, random_coordinate, crop_image, show_each_class, \
+    random_offset, crop_images
 import numpy as np
 
 
 class StampSignSegmentDataprovider(Sequence):
-    def __init__(self, stamp_folder, docs_folder, batch_size, max_n_stamp=30):
+    def __init__(self, stamp_folder, docs_folder, patch_size, batch_size, max_n_stamp=5):
         """
         Description:
          stamp, documentation 경로를 불러와 백터화합니다.(ndarray),
@@ -16,6 +17,8 @@ class StampSignSegmentDataprovider(Sequence):
         :param stamp_folder: str, 도장 데이터들이 들어 있는 폴더
         :param docs_folder: str, 도장이 찍힐 문서 이미지가 들어 있는 폴더
         :param batch_size: int, __getitem__
+        :param patch_size: crop 된 image가 붙여질 patch 크기
+         crop 된 이미지는 patch 이미지의 왼쪽 상단에 붙여짐.
         :param input_shape: tuple or list, 3차원의 모델에 입력될 이미지의 크기
          example)
           (370, 500, 3)
@@ -29,8 +32,8 @@ class StampSignSegmentDataprovider(Sequence):
         self.stamp_folder = stamp_folder
         self.docs_folder = docs_folder
         self.batch_size = batch_size
-        self.n_stamp_range = (20, max_n_stamp)
-        self.stamp_size = (112, 112)
+        self.n_stamp_range = (1, max_n_stamp)
+        self.patch_size = patch_size
 
         # 지정된 경로에 있는 파일중 stamp 이미지 파일만 찾습니다.
         stamp_img_paths = glob(os.path.join(self.stamp_folder, '*'))
@@ -160,22 +163,49 @@ class StampSignSegmentDataprovider(Sequence):
             # (⚠️background 가 0 이기 때문에 1을 더해줍니다.)
             trgt_cls = trgt_cls + 1
             mask = np.zeros(docu.shape[:2])
+            stamp_coords = []
             for trgt_stamp, trgt_class in zip(trgt_stamps, trgt_cls):
                 # 지정된 범위 내 random 한 위치에 도장이 찍히도록 합니다.
                 docu, mask, coord = StampSignSegmentDataprovider.random_attach_stamp(docu, mask, trgt_stamp, trgt_class,
                                                                                      stamp_loc,
                                                                                      inplace=False)
-            # 특정 이미지 크기로 document 을 crop 합니다.
-            crop_docu_h, crop_docu_w = 112, 112
-            rand_x, rand_y = random_coordinate(docu, (crop_docu_h, crop_docu_w))
-            crop_docu = crop_image(docu, (rand_x, rand_y, rand_x + crop_docu_h, rand_y + crop_docu_w))
-            crop_mask = crop_image(mask, (rand_x, rand_y, rand_x + crop_docu_h, rand_y + crop_docu_w))
+                stamp_coords.append(coord)
 
-            # onehot vector 로 변경합니다.
-            crop_mask = to_categorical(crop_mask, len(self.stamp_indx) + 1)
+            # random offset 생성
+            stamp_coords = np.array(stamp_coords)
+            offset_xs, offset_ys = random_offset(stamp_coords, (0.25, 0.25), docu.shape[:2])
 
-            batch_xs.append(crop_docu)
-            batch_ys.append(crop_mask)
+            # shape (N_stamp)  => (N_stamp, 1)
+            offset_xs = np.expand_dims(offset_xs, axis=-1)
+            offset_ys = np.expand_dims(offset_ys, axis=-1)
+
+            # random offset 적용
+            # shape : (N_stamp, 2) += (N_stamp, 1) => (N_stamp, 2)
+            stamp_coords[:, [0, 2]] += offset_xs
+            stamp_coords[:, [1, 3]] += offset_ys
+
+            # 이미지를 생성된 stamp을 각각 포함하게 자릅니다.
+            stamp_coords = np.array(stamp_coords)
+            cropped_images = crop_images(docu, stamp_coords)
+
+            # cropped 된 이미지를 왼쪽 상단에 붙입니다.
+            patched_images = []
+            for cropped_img in cropped_images:
+                patched_image = np.zeros([*self.patch_size, 3])
+                patched_image[:cropped_img.shape[0], :cropped_img.shape[1]] = cropped_img
+                patched_images.append(patched_image)
+            batch_xs.extend(patched_images)
+
+            # crop 된 mask 을 zero matrix patch에 붙입니다.
+            patched_mask_onehots = []
+            cropped_masks = crop_images(mask, stamp_coords)
+            for cropped_mask in cropped_masks:
+                patched_mask = np.zeros(self.patch_size)
+                patched_mask[:cropped_mask.shape[0], :cropped_mask.shape[1]] = cropped_mask
+
+                patched_mask_onehot = to_categorical(patched_mask, self.n_classes)
+                patched_mask_onehots.append(patched_mask_onehot)
+            batch_ys.extend(patched_mask_onehots)
 
         return np.array(batch_xs), np.array(batch_ys)
 
@@ -184,7 +214,7 @@ if __name__ == '__main__':
     docs_folder = '../dataset/docs_preproc'
     stamp_folder = '../dataset/stamp_vector'
 
-    sss_dp = StampSignSegmentDataprovider(stamp_folder, docs_folder, 2)
+    sss_dp = StampSignSegmentDataprovider(stamp_folder, docs_folder, (112, 112), 2)
     batch_xs, batch_ys = sss_dp[0]
     batch_ys = np.argmax(batch_ys, axis=-1)
     sample_ys = batch_ys[0]

@@ -76,10 +76,15 @@ def random_offset(object_coords, offset_xy_ratio, max_size):
     """
     Description:
     주어진 좌표별로 지정된 번위 내 offset을 random 으로 생성합니다.
-    생성된 offset 을 입력된 좌표(ojbect_coords)에 offset 을 더한 후 반환합니다.
+    생성된 offset 을 입력된 좌표(object_coords)에 offset 을 더한 후 반환합니다.
+    좌표가 생성되더라도 max_size 가 넘어가로도록 지정되거나
+    아니면 0,0 이하의 좌표가 생성되록 만들어지면 다시 생성합니다.
+
+    TODO: object_coords 을 한번에 받지 않고 object coord 을 따로 받아 처리 할 수 있도록 함수 재 설계
 
     :param object_coords: ndarray, (N_coords, 4=(x y x y))
-    :param offset_ratios: tuple, (offset_x_ratio, offset_y_ratio)
+    :param offset_xy_ratio: tuple, (offset_x_ratio, offset_y_ratio)
+    :param max_size: tuple, (max_h, max_w)
 
     :return:
     """
