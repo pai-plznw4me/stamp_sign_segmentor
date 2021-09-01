@@ -75,4 +75,4 @@ if __name__ == '__main__':
     inputs, pred = simple_unet((112, 112, 3))
     model = Model(inputs, pred)
     model.compile('adam', 'mse', 'acc')
-    model.fit(sss_dp)
+    model.fit(sss_dp, epochs=60)
