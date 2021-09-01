@@ -108,11 +108,10 @@ def random_offset(object_coords, offset_xy_ratio, max_size):
         object_coords[ind, [0, 2]] += offset_x
         object_coords[ind, [1, 3]] += offset_y
 
-        a = np.any(object_coords[ind, [0, 1]] < 0)
-        b = np.any(object_coords[ind, [2, 3]] > (max_w, max_h))
-
+        # 만약 random offset 을 적용했을때 기존의 이미지 크기를 넘어가면 offset 을 삭제 합니다.
         if np.any(object_coords[ind, [0, 1]] < 0) | np.any(object_coords[ind, [2, 3]] > (max_w, max_h)):
-            continue
+            offset_x = 0
+            offset_y = 0
 
         offset_ys.append(offset_y)
         offset_xs.append(offset_x)
